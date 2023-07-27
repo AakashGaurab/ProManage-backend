@@ -1,5 +1,6 @@
 import json
 from flask import Flask,request,jsonify
+from flask import redirect, render_template, url_for
 from flask_bcrypt import Bcrypt
 from flask_pymongo import PyMongo
 from datetime import date
@@ -7,6 +8,8 @@ from flask_cors import CORS
 from bson import json_util
 from pymongo import MongoClient
 import openai
+import os
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -166,11 +169,76 @@ def addResource(name):
     db.projects.update_one({"name":name},{"$push":data})
     return jsonify("Resource Added")
 
+def get_current_weather(location, unit="fahrenheit"):
+    url =  "https://api.openweathermap.org/data/2.5/weather?q=Ranchi&appid=5bf1532258b851ebe514cc9d06bb7170"
+    response = requests.get(url)
+    data = response.json()
+    weather_info = {
+        "location": location,
+        "temperature": "90",
+        "unit": unit,
+        "forecast": ["sunny", "windy"],
+    }
+    
+    return json.dumps(data)
 
 
 
+openai.api_key = "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"
 
-
+@app.route("/openai", methods=("GET", "POST"))
+def openai_generate():
+    data = request.get_json()
+    prompt = data["query"]
+    messages = [{"role": "user", "content": prompt}]
+    functions = [
+        {
+            "name": "get_current_weather",
+            "description": "Get the current weather in a given location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA",
+                    },
+                    "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
+                },
+                "required": ["location"],
+            },
+        }
+    ]
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-0613",
+        messages=messages,
+        functions=functions,
+        function_call="auto",  # auto is default, but we'll be explicit
+    )
+    response_message = response["choices"][0]["message"]
+    if response_message.get("function_call"):
+        available_functions = {
+            "get_current_weather": get_current_weather,
+        } 
+        function_name = response_message["function_call"]["name"]
+        fuction_to_call = available_functions[function_name]
+        function_args = json.loads(response_message["function_call"]["arguments"])
+        function_response = fuction_to_call(
+            location=function_args.get("location"),
+            unit=function_args.get("unit"),
+        )
+        messages.append(response_message)  # extend conversation with assistant's reply
+        messages.append(
+            {
+                "role": "function",
+                "name": function_name,
+                "content": function_response,
+            }
+        )
+        second_response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-0613",
+            messages=messages,
+        )
+        return second_response
 
 
 
