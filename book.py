@@ -184,7 +184,9 @@ def get_current_weather(location, unit="fahrenheit"):
 
 
 
-openai.api_key = "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"
+from dotenv import dotenv_values
+dotenv_values('.env')
+openai.api_key = os.getenv('key')
 
 @app.route("/openai", methods=("GET", "POST"))
 def openai_generate():
