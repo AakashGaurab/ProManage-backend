@@ -241,6 +241,8 @@ def openai_generate():
             messages=messages,
         )
         return second_response
+    else:
+        return response_message
 
 
 
